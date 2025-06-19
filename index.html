@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catch the Falling Stars</title>
+    <!-- Tone.js CDN for sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
     <style>
         body {
             display: flex;
@@ -189,6 +191,58 @@
         const STAR_FALL_SPEED = 2; // Base speed for stars
         const STAR_SPAWN_DELAY_MS = 1000; // How often stars appear
 
+        // --- Tone.js Sound Setup ---
+        // Create a simple synth for a "collect" sound effect
+        const collectSynth = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0.0, release: 0.1 }
+        }).toDestination();
+
+        // Create a separate synth for a "lose life" sound (lower, more percussive)
+        const loseLifeSynth = new Tone.MembraneSynth({
+            octaves: 2,
+            pitchDecay: 0.05,
+            envelope: { attack: 0.001, decay: 0.4, sustain: 0.0, release: 0.05 }
+        }).toDestination();
+
+        // Create a poly synth for game over chord
+        const gameOverSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "sawtooth" },
+            envelope: { attack: 0.1, decay: 0.4, sustain: 0.0, release: 0.5 }
+        }).toDestination();
+
+
+        /**
+         * Plays a short sound effect for collecting a star.
+         */
+        function playCollectSound() {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+            collectSynth.triggerAttackRelease('C5', '8n');
+        }
+
+        /**
+         * Plays a sound effect for losing a life.
+         */
+        function playLoseLifeSound() {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+            loseLifeSynth.triggerAttackRelease('C2', '8n'); // Lower pitch for losing a life
+        }
+
+        /**
+         * Plays a sound effect for game over.
+         */
+        function playGameOverSound() {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+            // Play a minor chord for a 'game over' feel
+            gameOverSynth.triggerAttackRelease(['C3', 'Eb3', 'G3'], '1n'); // C minor chord
+        }
+
         // --- Utility Functions ---
 
         /**
@@ -345,6 +399,7 @@
                     star.x + star.size > catcher.x
                 ) {
                     score++;
+                    playCollectSound(); // Play sound when star is caught
                     stars.splice(index, 1); // Remove caught star
                     gameSpeed += 0.05; // Slightly increase speed for challenge
                     updateDisplay();
@@ -352,6 +407,7 @@
                 // Check if star hit the ground
                 else if (star.y + star.size > canvas.height) {
                     lives--;
+                    playLoseLifeSound(); // Play sound when life is lost
                     stars.splice(index, 1); // Remove lost star
                     updateDisplay();
                     if (lives <= 0) {
@@ -401,6 +457,7 @@
             gameRunning = false;
             if (starInterval) clearInterval(starInterval);
             if (gameLoopInterval) clearInterval(gameLoopInterval);
+            playGameOverSound(); // Play game over sound
             showMessageBox(`Game Over! Your final score: ${score}`);
         }
 
