@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catch the Falling Stars</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #1a202c; /* Dark background for space theme */
+            color: #e2e8f0; /* Light text color */
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        canvas {
+            background-color: #000000; /* Black for space */
+            border: 4px solid #4f46e5; /* Purple border */
+            border-radius: 1rem;
+            box-shadow: 0 0 20px rgba(79, 70, 229, 0.5); /* Glowing effect */
+            display: block; /* Remove extra space below canvas */
+            touch-action: manipulation; /* Prevent default touch actions like double tap zoom */
+        }
+        .game-info {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 2rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #a78bfa; /* Lighter purple */
+        }
+        .controls {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .control-button {
+            background-color: #4f46e5; /* Indigo button */
+            color: white;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .control-button:hover {
+            background-color: #6366f1; /* Lighter indigo on hover */
+            transform: translateY(-2px);
+        }
+        .control-button:active {
+            background-color: #4338ca; /* Darker indigo on active */
+            transform: translateY(0);
+        }
+        #messageBox {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #2d3748; /* Dark gray for message box */
+            border: 2px solid #4f46e5;
+            border-radius: 0.75rem;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none; /* Hidden by default */
+        }
+        #messageText {
+            color: white;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+        #messageBox button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+        }
+        #messageBox button:hover {
+            background-color: #6366f1;
+        }
+        /* Touch controls for mobile */
+        .touch-controls {
+            display: none; /* Hidden by default */
+            margin-top: 1.5rem;
+            width: 100%;
+            max-width: 600px;
+            justify-content: space-around;
+        }
+        .touch-button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 1.5rem 2.5rem;
+            border-radius: 50%; /* Circular buttons */
+            font-size: 2rem;
+            font-weight: bold;
+            cursor: pointer;
+            -webkit-user-select: none; /* Prevent text selection on tap for Safari */
+            user-select: none; /* Prevent text selection on tap */
+            -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .touch-button:active {
+            background-color: #4338ca;
+            transform: scale(0.95);
+        }
+
+        /* Show touch controls on smaller screens */
+        @media (max-width: 767px) {
+            .touch-controls {
+                display: flex;
+            }
+            .controls {
+                display: none; /* Hide keyboard controls on small screens */
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="game-info">
+        <div id="score">Score: 0</div>
+        <div id="lives">Lives: 3</div>
+    </div>
+    <div class="controls">
+        <button id="startButton" class="control-button">Start Game</button>
+        <button id="resetButton" class="control-button">Reset Game</button>
+        <!-- Add simple text for instructions, as arrow keys aren't visible -->
+        <p class="text-gray-400 text-sm italic ml-4 flex items-center">Use Left/Right Arrow Keys to Move</p>
+    </div>
+
+    <!-- Touch controls for mobile (initially hidden, shown via media query) -->
+    <div class="touch-controls">
+        <button id="leftButton" class="touch-button">◀</button>
+        <button id="rightButton" class="touch-button">▶</button>
+    </div>
+
+    <!-- Custom Message Box -->
+    <div id="messageBox">
+        <p id="messageText"></p>
+        <button id="messageBoxCloseBtn">OK</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const livesDisplay = document.getElementById('lives');
+        const startButton = document.getElementById('startButton');
+        const resetButton = document.getElementById('resetButton');
+        const leftButton = document.getElementById('leftButton');
+        const rightButton = document.getElementById('rightButton');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const messageBoxCloseBtn = document.getElementById('messageBoxCloseBtn');
+
+        // Game variables
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+        let catcher;
+        let stars = [];
+        let starInterval;
+        let gameLoopInterval;
+        let gameSpeed = 1; // Initial falling speed multiplier
+        let lastTouchX = null; // For swipe detection
+
+        // Game settings
+        const CATCHER_WIDTH_RATIO = 0.15; // Catcher width as a percentage of canvas width
+        const CATCHER_HEIGHT_RATIO = 0.03; // Catcher height as a percentage of canvas height
+        const CATCHER_SPEED_PIXELS_PER_FRAME = 5; // Catcher movement speed
+        const STAR_SIZE_RATIO = 0.02; // Star size as a percentage of canvas width
+        const STAR_FALL_SPEED = 2; // Base speed for stars
+        const STAR_SPAWN_DELAY_MS = 1000; // How often stars appear
+
+        // --- Utility Functions ---
+
+        /**
+         * Displays a custom message box. Replaces browser's alert().
+         * @param {string} message The message to display.
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.style.display = 'block';
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.style.display = 'none';
+        }
+
+        // --- Game Object Classes ---
+
+        /**
+         * Represents the player's catcher at the bottom of the screen.
+         */
+        class Catcher {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.speed = CATCHER_SPEED_PIXELS_PER_FRAME;
+            }
+
+            draw() {
+                ctx.fillStyle = '#667eea'; // Blue-purple color for catcher
+                ctx.beginPath();
+                ctx.roundRect(this.x, this.y, this.width, this.height, 10); // Rounded rectangle
+                ctx.fill();
+            }
+
+            moveLeft() {
+                this.x -= this.speed;
+                if (this.x < 0) this.x = 0;
+            }
+
+            moveRight() {
+                this.x += this.speed;
+                if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+            }
+        }
+
+        /**
+         * Represents a falling star.
+         */
+        class Star {
+            constructor(x, y, size) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.speed = STAR_FALL_SPEED * gameSpeed; // Scales with game speed
+            }
+
+            draw() {
+                // Draw a simple star shape using canvas paths or emoji/text
+                ctx.fillStyle = '#ffd700'; // Gold color for stars
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('⭐', this.x + this.size / 2, this.y + this.size); // Using star emoji
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+        }
+
+        // --- Game Functions ---
+
+        /**
+         * Resizes the canvas to fit the window and initializes game elements.
+         */
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * 0.8; // 80% of window width
+            canvas.height = window.innerHeight * 0.7; // 70% of window height
+
+            // Ensure canvas is not too small on tiny screens or too big on huge ones
+            if (canvas.width < 300) canvas.width = 300;
+            if (canvas.height < 400) canvas.height = 400;
+
+            if (canvas.width > 1200) canvas.width = 1200;
+            if (canvas.height > 800) canvas.height = 800;
+
+            // Re-initialize catcher position and size based on new canvas size
+            const catcherWidth = canvas.width * CATCHER_WIDTH_RATIO;
+            const catcherHeight = canvas.height * CATCHER_HEIGHT_RATIO;
+            const catcherY = canvas.height - catcherHeight - 20; // 20px from bottom
+
+            if (!catcher) {
+                catcher = new Catcher((canvas.width - catcherWidth) / 2, catcherY, catcherWidth, catcherHeight);
+            } else {
+                catcher.width = catcherWidth;
+                catcher.height = catcherHeight;
+                catcher.y = catcherY;
+                // Keep x relative or re-center if desired
+                catcher.x = Math.max(0, Math.min(canvas.width - catcher.width, catcher.x));
+            }
+            // Update star size based on new canvas width
+            stars.forEach(star => {
+                star.size = canvas.width * STAR_SIZE_RATIO;
+            });
+            drawGame(); // Redraw after resize
+        }
+
+        /**
+         * Initializes or resets the game state.
+         */
+        function initializeGame() {
+            score = 0;
+            lives = 3;
+            stars = [];
+            gameSpeed = 1;
+            updateDisplay();
+            resizeCanvas(); // Set initial canvas size and catcher position
+            showMessageBox("Game Ready! Press 'Start Game' to begin.");
+        }
+
+        /**
+         * Updates score and lives display.
+         */
+        function updateDisplay() {
+            scoreDisplay.textContent = `Score: ${score}`;
+            livesDisplay.textContent = `Lives: ${lives}`;
+        }
+
+        /**
+         * Main game drawing function.
+         */
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+            catcher.draw();
+            stars.forEach(star => star.draw());
+        }
+
+        /**
+         * Main game update logic per frame.
+         */
+        function updateGame() {
+            stars.forEach((star, index) => {
+                star.update();
+
+                // Check for collision with catcher
+                if (
+                    star.y + star.size > catcher.y &&
+                    star.x < catcher.x + catcher.width &&
+                    star.x + star.size > catcher.x
+                ) {
+                    score++;
+                    stars.splice(index, 1); // Remove caught star
+                    gameSpeed += 0.05; // Slightly increase speed for challenge
+                    updateDisplay();
+                }
+                // Check if star hit the ground
+                else if (star.y + star.size > canvas.height) {
+                    lives--;
+                    stars.splice(index, 1); // Remove lost star
+                    updateDisplay();
+                    if (lives <= 0) {
+                        endGame();
+                    }
+                }
+            });
+
+            drawGame();
+        }
+
+        /**
+         * Spawns a new star at a random X position.
+         */
+        function spawnStar() {
+            const starSize = canvas.width * STAR_SIZE_RATIO;
+            const x = Math.random() * (canvas.width - starSize);
+            stars.push(new Star(x, 0, starSize));
+        }
+
+        /**
+         * Starts the game.
+         */
+        function startGame() {
+            if (gameRunning) return;
+            gameRunning = true;
+            score = 0;
+            lives = 3;
+            stars = [];
+            gameSpeed = 1;
+            updateDisplay();
+
+            // Clear any existing intervals
+            if (starInterval) clearInterval(starInterval);
+            if (gameLoopInterval) clearInterval(gameLoopInterval);
+
+            // Set up new intervals
+            starInterval = setInterval(spawnStar, STAR_SPAWN_DELAY_MS);
+            gameLoopInterval = setInterval(updateGame, 1000 / 60); // 60 FPS
+            hideMessageBox();
+        }
+
+        /**
+         * Ends the game.
+         */
+        function endGame() {
+            gameRunning = false;
+            if (starInterval) clearInterval(starInterval);
+            if (gameLoopInterval) clearInterval(gameLoopInterval);
+            showMessageBox(`Game Over! Your final score: ${score}`);
+        }
+
+        /**
+         * Resets the game to its initial state.
+         */
+        function resetGame() {
+            endGame(); // Stop any ongoing game
+            initializeGame(); // Reset variables and display start message
+        }
+
+
+        // --- Event Listeners ---
+
+        // Keyboard controls
+        let keysPressed = {};
+        document.addEventListener('keydown', (e) => {
+            keysPressed[e.key] = true;
+            if (gameRunning) {
+                if (e.key === 'ArrowLeft') catcher.moveLeft();
+                if (e.key === 'ArrowRight') catcher.moveRight();
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            delete keysPressed[e.key];
+        });
+
+        // Touch controls (for mobile)
+        leftButton.addEventListener('touchstart', (e) => { e.preventDefault(); keysPressed['ArrowLeft'] = true; }, { passive: false });
+        leftButton.addEventListener('touchend', () => { delete keysPressed['ArrowLeft']; });
+        rightButton.addEventListener('touchstart', (e) => { e.preventDefault(); keysPressed['ArrowRight'] = true; }, { passive: false });
+        rightButton.addEventListener('touchend', () => { delete keysPressed['ArrowRight']; });
+
+        // Continuous movement while button is pressed (or finger held down)
+        function handleCatcherMovement() {
+            if (gameRunning) {
+                if (keysPressed['ArrowLeft']) catcher.moveLeft();
+                if (keysPressed['ArrowRight']) catcher.moveRight();
+            }
+            requestAnimationFrame(handleCatcherMovement); // Keep checking
+        }
+
+        // Swipe controls (alternative for mobile)
+        canvas.addEventListener('touchstart', (e) => {
+            if (gameRunning && e.touches.length === 1) {
+                lastTouchX = e.touches[0].clientX;
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameRunning && lastTouchX !== null && e.touches.length === 1) {
+                const currentTouchX = e.touches[0].clientX;
+                const deltaX = currentTouchX - lastTouchX;
+                // Move catcher based on swipe delta
+                catcher.x += deltaX * 0.5; // Adjust sensitivity
+                if (catcher.x < 0) catcher.x = 0;
+                if (catcher.x + catcher.width > canvas.width) catcher.x = canvas.width - catcher.width;
+                lastTouchX = currentTouchX;
+                drawGame(); // Redraw catcher position immediately on swipe
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+            lastTouchX = null;
+        }, { passive: true });
+
+
+        // Button events
+        startButton.addEventListener('click', startGame);
+        resetButton.addEventListener('click', resetGame);
+        messageBoxCloseBtn.addEventListener('click', hideMessageBox);
+
+        // Initial setup on window load and resize
+        window.addEventListener('resize', resizeCanvas);
+        window.onload = () => {
+            initializeGame();
+            requestAnimationFrame(handleCatcherMovement); // Start continuous movement check
+        };
+    </script>
+</body>
+</html>
